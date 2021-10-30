@@ -19,8 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdlib.h>
-#include <string.h>
+#include "app_US100.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -44,6 +43,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart5;
+DMA_HandleTypeDef hdma_uart5_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -53,28 +53,19 @@ UART_HandleTypeDef huart5;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_UART5_Init(void);
+static void MX_DMA_Init(void);
 /* USER CODE BEGIN PFP */
-
-void UART_SEND(UART_HandleTypeDef *huart, char buffer[])
-{
-HAL_UART_Transmit(huart, (uint8_t*) buffer, strlen(buffer), HAL_MAX_DELAY);
-}
-
-void UART_SEND_INT(UART_HandleTypeDef *huart, int i, int m)
-{
-	char buffer[2];
-	itoa(i, buffer, 2);
-//	HAL_UART_Transmit(huart, (uint8_t*) buffer, strlen(buffer), HAL_MAX_DELAY);
-	HAL_UART_Transmit(huart, (uint8_t*)'h', 1, HAL_MAX_DELAY);
-
-	if(m == 1)
-		HAL_UART_Transmit(huart, (uint8_t*)"\n\r", 2, HAL_MAX_DELAY);
-}
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+enum { IDLE, WAIT_DIST, CALC_DIST };
+char state = IDLE;
+char try = 0;
+uint16_t value = 0;
+uint8_t cmd_dist = 0x55;
+uint8_t UART5_rx_buffer[2] = {0};
 
 /* USER CODE END 0 */
 
@@ -106,22 +97,47 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_UART5_Init();
   /* USER CODE BEGIN 2 */
-
+  us100_init(&huart5, &hdma_uart5_rx);
   /* USER CODE END 2 */
+  int test = 0;
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
-//  	UART_SEND_INT(&huart5, 2, 0);
-  	UART_SEND(&huart5, "hello");
-  	HAL_Delay(100);
-    /* USER CODE BEGIN 3 */
+  	if (state == IDLE)
+  	{
+  		// Send request to measure distance
+  		us100_write(cmd_dist);
+  		us100_read(UART5_rx_buffer, 2);
+  		// Change state to wait for response
+  		state = WAIT_DIST;
+  		try = 0;
+  	}
+  	else if (state == CALC_DIST)
+  	{
+  		// Calculate the distance
+  		value = (UART5_rx_buffer[0] << 8) + UART5_rx_buffer[1];
+  		test = value;
+  		state = IDLE;
+  	}
+    HAL_Delay(100);
+
+    // Retry after 5 seconds
+    if (++try >= 50) {
+    	state = IDLE;
+    }
   }
-  /* USER CODE END 3 */
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if (state == WAIT_DIST) {
+		state = CALC_DIST;
+	}
 }
 
 /**
@@ -203,6 +219,22 @@ static void MX_UART5_Init(void)
   /* USER CODE BEGIN UART5_Init 2 */
 
   /* USER CODE END UART5_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Channel2_IRQn);
 
 }
 
