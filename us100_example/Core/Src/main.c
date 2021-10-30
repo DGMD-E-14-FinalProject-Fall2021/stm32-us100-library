@@ -60,12 +60,6 @@ static void MX_DMA_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-enum { IDLE, WAIT_DIST, CALC_DIST };
-char state = IDLE;
-char try = 0;
-uint16_t value = 0;
-uint8_t cmd_dist = 0x55;
-uint8_t UART5_rx_buffer[2] = {0};
 
 /* USER CODE END 0 */
 
@@ -99,45 +93,17 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_UART5_Init();
-  /* USER CODE BEGIN 2 */
   us100_init(&huart5, &hdma_uart5_rx);
-  /* USER CODE END 2 */
-  int test = 0;
 
+  int distance = 0;
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-  	if (state == IDLE)
-  	{
-  		// Send request to measure distance
-  		us100_write(cmd_dist);
-  		us100_read(UART5_rx_buffer, 2);
-  		// Change state to wait for response
-  		state = WAIT_DIST;
-  		try = 0;
+  	if (us100_data_available()) {
+  		distance = us100_get_distance();
   	}
-  	else if (state == CALC_DIST)
-  	{
-  		// Calculate the distance
-  		value = (UART5_rx_buffer[0] << 8) + UART5_rx_buffer[1];
-  		test = value;
-  		state = IDLE;
-  	}
-    HAL_Delay(100);
-
-    // Retry after 5 seconds
-    if (++try >= 50) {
-    	state = IDLE;
-    }
   }
-}
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-	if (state == WAIT_DIST) {
-		state = CALC_DIST;
-	}
 }
 
 /**
